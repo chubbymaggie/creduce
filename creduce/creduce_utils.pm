@@ -1,6 +1,6 @@
 ## -*- mode: Perl -*-
 ##
-## Copyright (c) 2012, 2013, 2015 The University of Utah
+## Copyright (c) 2012, 2013, 2015, 2016 The University of Utah
 ## All rights reserved.
 ##
 ## This file is distributed under the University of Illinois Open Source
@@ -86,12 +86,6 @@ sub read_file ($) {
 	$prog .= $line;
     }
     close INF;
-    if (substr($prog, 0, 1) ne " ") {
-	$prog = " $prog";
-    }
-    if (substr ($prog, -1, 1) ne " ") {
-	$prog = "$prog ";
-    }
     return $prog;
 }
 

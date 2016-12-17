@@ -1,6 +1,6 @@
 ## -*- mode: Perl -*-
 ##
-## Copyright (c) 2012, 2013, 2015 The University of Utah
+## Copyright (c) 2012, 2013, 2015, 2016 The University of Utah
 ## All rights reserved.
 ##
 ## This file is distributed under the University of Illinois Open Source
@@ -43,7 +43,8 @@ sub count_instances ($$) {
 sub check_prereqs () {
     $ORIG_DIR = getcwd();
     my $path;
-    if ($FindBin::RealBin eq abs_path(bindir)) {
+    my $abs_bindir = abs_path(bindir);
+    if ((defined $abs_bindir) && ($FindBin::RealBin eq $abs_bindir)) {
 	# This script is in the installation directory.
 	# Use the installed `clang_delta'.
 	$path = libexecdir . "/clang_delta";
@@ -83,11 +84,6 @@ sub advance ($$$) {
 	print "ADVANCE: index = $index, chunk = $chunk\n";
     }
     return \%sh;
-}
-
-sub advance_on_success ($$$) {
-    (my $cfile, my $which, my $state) = @_;
-    return $state;
 }
 
 sub round ($) {

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Copyright (c) 2012, 2013, 2015 The University of Utah
+// Copyright (c) 2012, 2013, 2015, 2016 The University of Utah
 // All rights reserved.
 //
 // This file is distributed under the University of Illinois Open Source
@@ -109,7 +109,7 @@ void RemoveUnusedOuterClass::HandleTranslationUnit(ASTContext &Ctx)
 
 void RemoveUnusedOuterClass::analyzeCXXRDSet()
 {
-  for (CXXRecordDeclSet::iterator I = CXXRDDefSet.begin(), 
+  for (CXXRecordDeclSetVector::iterator I = CXXRDDefSet.begin(), 
        E = CXXRDDefSet.end(); I != E; ++I) {
     const CXXRecordDecl *Def = (*I);
     if (UsedCXXRDSet.count(Def->getCanonicalDecl()))
@@ -140,7 +140,7 @@ void RemoveUnusedOuterClass::removeOuterClass()
     TheRewriter.RemoveText(AS->getSourceRange());
   }
   
-  LocStart = TheCXXRDDef->getRBraceLoc();
+  LocStart = TheCXXRDDef->getBraceRange().getEnd();
   LocEnd = RewriteHelper->getLocationUntil(LocStart, ';');
   if (LocStart.isInvalid() || LocEnd.isInvalid())
     return;

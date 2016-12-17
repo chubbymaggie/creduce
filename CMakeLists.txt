@@ -26,8 +26,8 @@ project(creduce)
 find_package(LLVM REQUIRED CONFIG NO_CMAKE_BUILDS_PATH)
 message(STATUS "Found LLVM ${LLVM_PACKAGE_VERSION}")
 message(STATUS "Using LLVMConfig.cmake in ${LLVM_DIR}")
-if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.8")
-  message(FATAL_ERROR "C-Reduce requires LLVM 3.8 or later")
+if (${LLVM_PACKAGE_VERSION} VERSION_LESS "3.9")
+  message(FATAL_ERROR "C-Reduce requires LLVM 3.9 or later")
 endif()
 
 # Locate Perl and check its version.
@@ -68,7 +68,7 @@ endif()
 
 # Generate the "config.h" file.
 #
-set(ENABLE_TRANS_ASSERT OFF CACHE BOOL
+set(ENABLE_TRANS_ASSERT ON CACHE BOOL
   "Use assert() in clang_delta transformations.")
 
 check_include_file("dlfcn.h"		HAVE_DLFCN_H)
@@ -85,11 +85,11 @@ check_include_file("unistd.h"		HAVE_UNISTD_H)
 set(creduce_PACKAGE			"creduce")
 set(creduce_PACKAGE_BUGREPORT		"creduce-bugs@flux.utah.edu")
 set(creduce_PACKAGE_NAME		"creduce")
-set(creduce_PACKAGE_STRING		"creduce 2.6.0")
+set(creduce_PACKAGE_STRING		"creduce 2.7.0")
 set(creduce_PACKAGE_TARNAME		"creduce")
 set(creduce_PACKAGE_URL			"http://embed.cs.utah.edu/creduce/")
-set(creduce_PACKAGE_VERSION		"2.6.0")
-set(creduce_VERSION			"2.6.0")
+set(creduce_PACKAGE_VERSION		"2.7.0")
+set(creduce_VERSION			"2.7.0")
 
 # FIXME: Should be determined automatically.
 set(YYTEXT_POINTER 1)
@@ -124,7 +124,13 @@ add_subdirectory(clang_delta)
 add_subdirectory(clex)
 add_subdirectory(creduce)
 add_subdirectory(delta)
-add_subdirectory(unifdef)
+# `unifdef' requires a Unix-y platform.
+if(UNIX)
+  add_subdirectory(unifdef)
+else()
+  message(WARNING
+    "Internal tool `unifdef${CMAKE_EXECUTABLE_SUFFIX}' cannot be compiled on this OS; skipping.")
+endif()
 
 ###############################################################################
 

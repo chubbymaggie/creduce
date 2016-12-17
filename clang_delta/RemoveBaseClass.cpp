@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Copyright (c) 2012, 2013, 2014, 2015 The University of Utah
+// Copyright (c) 2012, 2013, 2014, 2015, 2016 The University of Utah
 // All rights reserved.
 //
 // This file is distributed under the University of Illinois Open Source
@@ -207,9 +207,8 @@ void RemoveBaseClass::copyBaseClassDecls(void)
 {
   if (!getNumExplicitDecls(TheBaseClass))
     return;
-  SourceLocation StartLoc = 
-    RewriteHelper->getLocationAfter(TheBaseClass->getLocation(), '{');
-  SourceLocation EndLoc = TheBaseClass->getRBraceLoc();
+  SourceLocation StartLoc = TheBaseClass->getBraceRange().getBegin();
+  SourceLocation EndLoc = TheBaseClass->getBraceRange().getEnd();
   TransAssert(EndLoc.isValid() && "Invalid RBraceLoc!");
   EndLoc = EndLoc.getLocWithOffset(-1);
 
@@ -217,7 +216,7 @@ void RemoveBaseClass::copyBaseClassDecls(void)
     TheRewriter.getRewrittenText(SourceRange(StartLoc, EndLoc));
 
   TransAssert(!DeclsStr.empty() && "Empty DeclsStr!");
-  SourceLocation InsertLoc = TheDerivedClass->getRBraceLoc();
+  SourceLocation InsertLoc = TheDerivedClass->getBraceRange().getEnd();
   TheRewriter.InsertTextBefore(InsertLoc, DeclsStr);
 }
 

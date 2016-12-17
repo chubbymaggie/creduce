@@ -13,24 +13,14 @@ package pass_indent;
 use strict;
 use warnings;
 
-use creduce_config qw(ASTYLE CLANG_FORMAT INDENT);
+use creduce_config qw(CLANG_FORMAT);
 use creduce_utils;
 
-my $astyle;
 my $clang_format;
-my $indent;
-
-my $astyle_opts = "--options=none";
-my $indent_opts = "-npro -nbad -nbap -nbbb -cs -pcs -prs -saf -sai -saw -sob -ss ";
 
 sub check_prereqs () {
-    $astyle =
-	find_external_program(creduce_config::ASTYLE, "astyle");
     $clang_format =
 	find_external_program(creduce_config::CLANG_FORMAT, "clang-format");
-    $indent =
-	find_external_program(creduce_config::INDENT, "indent");
-
     return defined ($clang_format);
 }
 
@@ -44,31 +34,6 @@ sub advance ($$$) {
     my $index = ${$state};
     $index++;
     return \$index;
-}
-
-sub advance_on_success ($$$) {
-    (my $cfile, my $arg, my $state) = @_;
-    my $index = ${$state};
-    $index++;
-    return \$index;
-}
-
-sub invoke_indent ($) {
-    (my $cfile) = @_;
-    if ($^O eq "MSWin32") {
-	system qq{"$indent" $indent_opts $cfile > NUL 2>&1};
-    } else {
-	system qq{"$indent" $indent_opts $cfile >/dev/null 2>&1};
-    }
-}
-
-sub invoke_astyle ($) {
-    (my $cfile) = @_;
-    if ($^O eq "MSWin32") {
-	system qq{"$astyle" $astyle_opts $cfile > NUL 2>&1};
-    } else {
-	system qq{"$astyle" $astyle_opts $cfile >/dev/null 2>&1};
-    }
 }
 
 sub invoke_clang_format ($$) {
@@ -87,21 +52,13 @@ sub transform ($$$) {
     my $index = ${$state};
     my $old = read_file($cfile);
   AGAIN:
+    return ($STOP, \$index) unless ($index == 0);
     if ($arg eq "regular") {
-	return ($STOP, \$index) unless ($index == 0);
 	invoke_clang_format($cfile, $spaces);
     } elsif ($arg eq "final") {
-	if ($index == 0) {
-	    invoke_indent($cfile) if defined ($indent);
-	} elsif ($index == 1) {
-	    invoke_astyle($cfile) if defined ($astyle);
-	} elsif ($index == 2) {
-	    invoke_clang_format($cfile, $spaces);
-	} elsif ($index == 3) {
-	    invoke_clang_format($cfile, "");
-	} else {
-	    return ($STOP, \$index);
-	}
+        invoke_clang_format($cfile, "");
+    } else {
+        die;
     }
     my $new = read_file($cfile);
     if ($old eq $new) {

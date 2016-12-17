@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Copyright (c) 2012, 2013, 2015 The University of Utah
+// Copyright (c) 2012, 2013, 2015, 2016 The University of Utah
 // All rights reserved.
 //
 // This file is distributed under the University of Illinois Open Source
@@ -171,9 +171,8 @@ bool SimplifyStructRewriteVisitor::VisitRecordDecl(RecordDecl *RD)
   if (!RD->isThisDeclarationADefinition())
     return true;
 
-  SourceLocation LBLoc =
-    ConsumerInstance->RewriteHelper->getLocationUntil(RD->getLocation(), '{');
-  SourceLocation RBLoc = RD->getRBraceLoc();
+  SourceLocation LBLoc = RD->getBraceRange().getBegin();
+  SourceLocation RBLoc = RD->getBraceRange().getEnd();
   ConsumerInstance->TheRewriter.RemoveText(SourceRange(LBLoc, RBLoc));
   return true;
 }

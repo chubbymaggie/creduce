@@ -53,14 +53,11 @@ enum mode_t {
   MODE_RENAME = 1111,
   MODE_PRINT,
   MODE_DELETE_STRING,
-  MODE_REVERSE_TOKS,
   MODE_RM_TOKS,
   MODE_RM_TOK_PATTERN,
-  MODE_COLLAPSE_TOKS,
   MODE_SHORTEN_STRING,
   MODE_X_STRING,
-  MODE_REMOVE_ASM_COMMENT,
-  MODE_REMOVE_ASM_LINE,
+  MODE_DEFINE,
   MODE_NONE,
 };
 
@@ -72,111 +69,116 @@ static void print_toks(void) {
   exit(OK);
 }
 
-static void number_tokens(int ignore_renamed, int *max_id_seen_p,
-			  int *max_tok_p) {
-  int next_id = 0;
-  int max_id_seen = -1;
+static int next_char(char *c) {
+  if (*c == 'z') {
+    *c = 'a';
+    return 1;
+  }
+  *c = 1 + *c;
+  return 0;
+}
+
+static void next_name(char *name) {
+  int pos = strlen(name) - 1;
+  while (1) {
+    int wrapped = next_char(&name[pos]);
+    if (!wrapped)
+      return;
+    if (pos == 0) {
+      // there's no next string at this length so prepend a character
+      int i;
+      int len = strlen(name);
+      for (i = len; i >= 0; i--)
+	name[i + 1] = name[i];
+      name[0] = 'a';
+      return;
+    }
+    pos--;
+  }
+}
+
+static void find_unused_name(char *name) {
+  strcpy(name, "a");
+  int clash;
+  do {
+    clash = 0;
+    int i;
+    for (i = 0; i < toks; i++) {
+      if (strcmp(tok_list[i].str, name) == 0) {
+	next_name(name);
+	clash = 1;
+	break;
+      }
+    }
+  } while (clash);
+}
+
+static int should_be_renamed(char *name, char *newname) {
+  int i;
+  for (i=0; i < strlen(name); i++) {
+    if (name[i] < 'a' || name[i] > 'z')
+      return 1;
+  }
+  if (strlen(newname) > strlen(name))
+    return 0;
+  return strcmp(newname, name) < 0;
+}
+
+static void index_toks(char ***index_ptr, int *index_size_ptr, char *newname) {
+  char **index = 0;
+  int index_size = 0;
   int i;
   for (i = 0; i < toks; i++) {
     if (tok_list[i].kind != TOK_IDENT)
       continue;
-    int id;
-    int res = sscanf(tok_list[i].str, "x%d", &id);
-    if (res == 1) {
-      if (id > max_id_seen) {
-        max_id_seen = id;
-      }
-      if (ignore_renamed)
-        continue;
-    }
-    int j;
+    if (!should_be_renamed(tok_list[i].str, newname))
+      continue;
     int matched = 0;
-    for (j = 0; j < i; j++) {
-      if (tok_list[j].kind != TOK_IDENT)
-        continue;
-      if (strcmp(tok_list[j].str, tok_list[i].str) == 0) {
-        matched = 1;
-        tok_list[i].id = tok_list[j].id;
-        assert(tok_list[j].id != -1);
+    int j;
+    for (j = 0; j < index_size; j++) {
+      if (strcmp(index[j], tok_list[i].str) == 0) {
+	matched = 1;
+	tok_list[i].id = j;
+	break;
       }
     }
     if (!matched) {
-      tok_list[i].id = next_id;
-      next_id++;
+      tok_list[i].id = index_size;
+      index = realloc(index, (1 + index_size) * sizeof(char *));
+      index[index_size] = tok_list[i].str;
+      index_size++;
     }
   }
-  // FIXME find first unused instead of max_id_seen?
-  if (max_id_seen_p)
-    *max_id_seen_p = max_id_seen;
-  if (max_tok_p)
-    *max_tok_p = next_id;
+  *index_ptr = index;
+  *index_size_ptr = index_size;
 }
 
-static void collapse_toks(int tok_index) {
-  assert(tok_index >= 0);
-  int max_tok_id;
-  number_tokens(0, NULL, &max_tok_id);
-  // fprintf (stderr, "tok_index = %d, number of tokens = %d, max_tok_id =
-  // %d\n", tok_index, toks, max_tok_id);
-  int counter = -1;
+static void print_renamed(int tok_index, char *newname) {
   int i;
-  for (i = 0; i < max_tok_id; i++) {
-    int j;
-    for (j = 0; j < max_tok_id; j++) {
-      if (i == j)
-        continue;
-      counter++;
-      if (counter == tok_index) {
-        // rename i to have the same name as j
-        int k;
-        char *new_name = NULL;
-        for (k = 0; k < toks; k++) {
-          if (tok_list[k].id == j) {
-            new_name = tok_list[k].str;
-          }
-        }
-        assert(new_name);
-        for (k = 0; k < toks; k++) {
-          if (tok_list[k].id == i) {
-            // fprintf (stderr, "renaming '%s' to '%s'\n", tok_list[i].str,
-            // new_name);
-            printf("%s", new_name);
-          } else {
-            printf("%s", tok_list[k].str);
-          }
-        }
-        exit(OK);
-      }
-    }
+  for (i = 0; i < toks; i++) {
+    if (tok_list[i].id == tok_index)
+      printf("%s", newname);
+    else
+      printf("%s", tok_list[i].str);
   }
-  exit(STOP);
 }
 
 static void rename_toks(int tok_index) {
-  assert(tok_index >= 0);
-  int unused;
-  number_tokens(1, &unused, NULL);
   char newname[255];
-  sprintf(newname, "x%d", unused + 1);
-  int matched = 0;
-  char *oldname = NULL;
-  int i;
-  // dump the renamed token stream
-  for (i = 0; i < toks; i++) {
-    if (tok_list[i].id == tok_index) {
-      assert(!oldname || strcmp(oldname, tok_list[i].str) == 0);
-      oldname = tok_list[i].str;
-      matched = 1;
-      printf("%s", newname);
-    } else {
-      printf("%s", tok_list[i].str);
-    }
-  }
-  if (matched) {
-    // printf ("/* we renamed '%s' to '%s' */\n", oldname, newname);
-    exit(OK);
-  } else {
+  find_unused_name(newname);
+  assert(tok_index >= 0);
+  char **index;
+  int index_size;
+  index_toks(&index, &index_size, newname);
+  //fprintf(stderr, "tok_index = %d, index size = %d\n", tok_index, index_size);
+  if (tok_index >= index_size) {
+    //fprintf(stderr, "rename_toks stop\n");
     exit(STOP);
+  } else {
+    //fprintf(stderr, "rename_toks with index %d, source '%s', target '%s'\n",
+    // tok_index, index[tok_index], newname);
+    print_renamed(tok_index, newname);
+    exit(OK);
   }
 }
 
@@ -184,42 +186,6 @@ static void string_rm_chars(char *s, int i) {
   int j;
   for (j = 0; j < (strlen(s) - i + 1); j++) {
     s[j] = s[j + i];
-  }
-}
-
-static void delete_asm_comment(char *s) {
-  int i;
-  for (i = 0; s[i] != '\\'; i++) {
-  }
-  string_rm_chars(s, i);
-}
-
-static void remove_asm_comment(int idx) {
-  int i;
-  int matched = 0;
-  int which = 0;
-  for (i = 0; i < toks; i++) {
-    if (tok_list[i].kind == TOK_STRING) {
-      int j = 0;
-      char *s = tok_list[i].str;
-      while (s[j] != 0) {
-        if (s[j] == '#') {
-          if (idx == which) {
-            matched = 1;
-            delete_asm_comment(&s[j]);
-            break;
-          }
-          which++;
-        }
-        j++;
-      }
-    }
-    printf("%s", tok_list[i].str);
-  }
-  if (matched) {
-    exit(OK);
-  } else {
-    exit(STOP);
   }
 }
 
@@ -247,29 +213,6 @@ static int remove_line(char *s, int idx, int *numlines) {
   }
   *numlines = line;
   return ret;
-}
-
-static void remove_asm_line(int idx) {
-  int i;
-  int matched = 0;
-  for (i = 0; i < toks; i++) {
-    if (!matched && tok_list[i].kind == TOK_STRING) {
-      char *s = tok_list[i].str;
-      int numlines;
-      int res = remove_line(s, idx, &numlines);
-      if (res) {
-        matched = 1;
-      } else {
-        idx -= numlines;
-      }
-    }
-    printf("%s", tok_list[i].str);
-  }
-  if (matched) {
-    exit(OK);
-  } else {
-    exit(STOP);
-  }
 }
 
 static void shorten_string(int idx) {
@@ -351,55 +294,14 @@ static void delete_string(int idx) {
 
 static int n_toks;
 
-static void reverse_toks(int idx) {
-  const int N = 128;
-  int matched = 0;
-  int which = 0;
-  int i;
-
-#ifdef _MSC_VER
-  int *saved = calloc(N, sizeof(int));
-#else
-  int saved[N];
-#endif
-
-  int nsaved = 0;
-  for (i = 0; i < toks; i++) {
-    if (which >= idx && which < idx + n_toks) {
-      saved[nsaved] = i;
-      nsaved++;
-    } else {
-      printf("%s", tok_list[i].str);
-    }
-    if (which == idx + n_toks) {
-      int x;
-      for (x = nsaved - 1; x >= 0; x--) {
-        printf("%s", tok_list[saved[x]].str);
-      }
-    }
-    if (tok_list[i].kind != TOK_WS) {
-      which++;
-    }
-  }
-
-#ifdef _MSC_VER
-  free(saved);
-#endif
-
-  if (matched) {
-    exit(OK);
-  } else {
-    exit(STOP);
-  }
-}
-
 static void rm_toks(int idx) {
   int i;
   int matched = 0;
   int which = 0;
   int started = 0;
   for (i = 0; i < toks; i++) {
-    if (tok_list[i].kind != TOK_WS) {
+    if (tok_list[i].kind != TOK_WS &&
+        tok_list[i].kind != TOK_NEWLINE) {
       if (which == idx) {
         started = 1;
         matched = 1;
@@ -458,7 +360,8 @@ static void rm_tok_pattern(int idx) {
   int matched = 0;
   int deleted = 0;
   for (i = 0; i < toks; i++) {
-    if (tok_list[i].kind != TOK_WS) {
+    if (tok_list[i].kind != TOK_WS &&
+        tok_list[i].kind != TOK_NEWLINE) {
       if (which == idx) {
         matched = 1;
         started = 1;
@@ -469,7 +372,8 @@ static void rm_tok_pattern(int idx) {
     }
     int print = 0;
     int pattern_idx = which - idx;
-    if (tok_list[i].kind == TOK_WS) {
+    if (tok_list[i].kind == TOK_WS ||
+        tok_list[i].kind == TOK_NEWLINE) {
       print = 1;
     } else {
       if (!started) {
@@ -494,6 +398,65 @@ static void rm_tok_pattern(int idx) {
   }
 }
 
+// handle simple #defines
+// todo: handle macro arguments
+// todo: handle undefinition, redefinition, and other cases
+// fixme: this is just extremely hacky-- partial preprocessing should be done by
+// a separate tool that resembles unifdef
+void replace_macro(int i) {
+  int initial = i;
+  char *macro = tok_list[i].str;
+  // printf("replacing macro '%s'\n", macro);
+  i++;
+  while (tok_list[i].kind == TOK_WS)
+    i++;
+  int end = i;
+  while (tok_list[end].kind != TOK_NEWLINE)
+    end++;
+  int x;
+  for (x = 0; x < toks; ++x) {
+    if (x != initial &&
+        strcmp(tok_list[x].str, macro) == 0) {
+      int y;
+      for (y = i; y < end; ++y)
+        printf("%s", tok_list[y].str);
+    } else {
+      printf("%s", tok_list[x].str);
+    }
+  }
+}
+
+void define(int tok_index) {
+  int i;
+  int found = 0;
+  for (i = 0; i < toks; ++i) {
+    if (strcmp(tok_list[i].str, "#") == 0) {
+      i++;
+      while (tok_list[i].kind == TOK_WS)
+        i++;
+      if (strcmp(tok_list[i].str, "define") != 0)
+        continue;
+      i++;
+      while (tok_list[i].kind == TOK_WS)
+        i++;
+      int j;
+      int used = 0;
+      for (j = 0; j < toks; ++j)
+        if (j != i &&
+            strcmp(tok_list[j].str, tok_list[i].str) == 0)
+          used = 1;
+      if (!used)
+        continue;
+      if (found == tok_index) {
+        replace_macro(i);
+        exit(OK);
+      }
+      found++;
+    }
+  }
+  exit(STOP);
+}
+
 int main(int argc, char *argv[]) {
   if (argc != 4) {
     printf("USAGE: %s command index file\n", argv[0]);
@@ -512,17 +475,6 @@ int main(int argc, char *argv[]) {
     mode = MODE_SHORTEN_STRING;
   } else if (strcmp(cmd, "x-string") == 0) {
     mode = MODE_X_STRING;
-  } else if (strcmp(cmd, "remove-asm-comment") == 0) {
-    mode = MODE_REMOVE_ASM_COMMENT;
-  } else if (strcmp(cmd, "remove-asm-line") == 0) {
-    mode = MODE_REMOVE_ASM_LINE;
-  } else if (strcmp(cmd, "collapse-toks") == 0) {
-    mode = MODE_COLLAPSE_TOKS;
-  } else if (strncmp(cmd, "reverse-", 8) == 0) {
-    mode = MODE_REVERSE_TOKS;
-    int res = sscanf(&cmd[8], "%d", &n_toks);
-    assert(res == 1);
-    assert(n_toks > 0 && n_toks <= 1000);
   } else if (strncmp(cmd, "rm-toks-", 8) == 0) {
     mode = MODE_RM_TOKS;
     int res = sscanf(&cmd[8], "%d", &n_toks);
@@ -533,6 +485,8 @@ int main(int argc, char *argv[]) {
     int res = sscanf(&cmd[15], "%d", &n_toks);
     assert(res == 1);
     assert(n_toks > 1 && n_toks <= 8);
+  } else if (strcmp(cmd, "define") == 0) {
+    mode = MODE_DEFINE;
   } else {
     printf("error: unknown mode '%s'\n", cmd);
     assert(0);
@@ -569,23 +523,14 @@ int main(int argc, char *argv[]) {
   case MODE_X_STRING:
     x_string(tok_index);
     assert(0);
-  case MODE_REMOVE_ASM_COMMENT:
-    remove_asm_comment(tok_index);
-    assert(0);
-  case MODE_REMOVE_ASM_LINE:
-    remove_asm_line(tok_index);
-    assert(0);
-  case MODE_COLLAPSE_TOKS:
-    collapse_toks(tok_index);
-    assert(0);
   case MODE_RM_TOKS:
     rm_toks(tok_index);
     assert(0);
-  case MODE_REVERSE_TOKS:
-    reverse_toks(tok_index);
-    assert(0);
   case MODE_RM_TOK_PATTERN:
     rm_tok_pattern(tok_index);
+    assert(0);
+  case MODE_DEFINE:
+    define(tok_index);
     assert(0);
   default:
     assert(0);

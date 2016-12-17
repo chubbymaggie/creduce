@@ -774,6 +774,7 @@ const CXXRecordDecl *Transformation::getBaseDeclFromType(const Type *Ty)
   case Type::FunctionNoProto:
   case Type::SubstTemplateTypeParmPack:
   case Type::PackExpansion:
+  case Type::Vector:
   case Type::Builtin: // fall-through
     return NULL;
 
@@ -788,6 +789,11 @@ const CXXRecordDecl *Transformation::getBaseDeclFromType(const Type *Ty)
   case Type::TypeOfExpr: {
     const Expr *E = dyn_cast<TypeOfExprType>(Ty)->getUnderlyingExpr();
     return getBaseDeclFromType(E->getType().getTypePtr());
+  }
+
+  case Type::TypeOf: {
+    return getBaseDeclFromType(
+      dyn_cast<TypeOfType>(Ty)->getUnderlyingType().getTypePtr());
   }
 
   default:

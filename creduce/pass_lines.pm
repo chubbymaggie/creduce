@@ -1,6 +1,6 @@
 ## -*- mode: Perl -*-
 ##
-## Copyright (c) 2012, 2013, 2015 The University of Utah
+## Copyright (c) 2012, 2013, 2015, 2016 The University of Utah
 ## All rights reserved.
 ##
 ## This file is distributed under the University of Illinois Open Source
@@ -25,7 +25,8 @@ my $topformflat;
 
 sub check_prereqs () {
     my $path;
-    if ($FindBin::RealBin eq abs_path(bindir)) {
+    my $abs_bindir = abs_path(bindir);
+    if ((defined $abs_bindir) && ($FindBin::RealBin eq $abs_bindir)) {
 	# This script is in the installation directory.
 	# Use the installed `topformflat'.
 	$path = libexecdir . "/topformflat";
@@ -69,11 +70,6 @@ sub advance ($$$) {
     return \%sh;
 }
 
-sub advance_on_success ($$$) {
-    (my $cfile, my $which, my $state) = @_;
-    return $state;
-}
-
 sub transform ($$$) {
     (my $cfile, my $arg, my $state) = @_;
     my %sh = %{$state};
@@ -81,10 +77,22 @@ sub transform ($$$) {
     if (defined($sh{"start"})) {
 	print "***TRANSFORM START***\n" if $DEBUG;
 	delete $sh{"start"};
-	my $tmpfile = File::Temp::tmpnam();
-	my $cmd = "$topformflat $arg < $cfile | grep -v '^\\s*\$' > $tmpfile";
+	my $outfile = File::Temp::tmpnam();
+	my $cmd = qq{"$topformflat" $arg < $cfile > $outfile};
 	print $cmd if $DEBUG;
 	runit ($cmd);
+
+	my $tmpfile = File::Temp::tmpnam();
+	open INF_BLANK, "<$outfile" or die;
+	open OUTF_BLANK, ">$tmpfile" or die;
+	while (my $line = <INF_BLANK>) {
+		if($line !~ /^\s*$/) {
+			print OUTF_BLANK $line;
+		}
+	}
+	close INF_BLANK;
+	close OUTF_BLANK;
+
 	if (compare($cfile, $tmpfile) == 0) {
 	    # this is a gross hack to avoid tripping the
 	    # pass-didn't-modify-file check in the C-Reduce core, in

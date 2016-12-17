@@ -1,6 +1,6 @@
 ## -*- mode: Perl -*-
 ##
-## Copyright (c) 2012, 2015 The University of Utah
+## Copyright (c) 2012, 2015, 2016 The University of Utah
 ## All rights reserved.
 ##
 ## This file is distributed under the University of Illinois Open Source
@@ -33,11 +33,6 @@ sub advance ($$$) {
     my $pos = ${$state};
     $pos++;
     return \$pos;
-}
-
-sub advance_on_success ($$$) {
-    (my $cfile, my $arg, my $state) = @_;
-    return $state;
 }
 
 sub remove_outside ($) {

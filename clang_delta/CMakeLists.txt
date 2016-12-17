@@ -31,9 +31,14 @@ include_directories(${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIRS})
 
 llvm_map_components_to_libnames(LLVM_LIBS
+  coverage
   irreader
   mcparser
+  objcarcopts
   option
+  passes
+  profiledata
+  support
 )
 
 set(CLANG_LIBS
@@ -54,6 +59,7 @@ set(CLANG_LIBS
   clangBasic
   clangEdit
   clangLex
+  clangARCMigrate
 )
 
 add_executable(clang_delta
@@ -79,6 +85,8 @@ add_executable(clang_delta
   CopyPropagation.h
   EmptyStructToInt.cpp
   EmptyStructToInt.h
+  ExpressionDetector.cpp
+  ExpressionDetector.h
   InstantiateTemplateParam.cpp
   InstantiateTemplateParam.h
   InstantiateTemplateTypeParamToInt.cpp
@@ -201,11 +209,19 @@ add_executable(clang_delta
   UnifyFunctionDecl.h
   UnionToStruct.cpp
   UnionToStruct.h
+  VectorToArray.cpp
+  VectorToArray.h
   ${PROJECT_BINARY_DIR}/git_version.cpp
   git_version.h
 )
 
 target_link_libraries(clang_delta ${CLANG_LIBS} ${LLVM_LIBS})
+
+# On Windows, we also need to link with "Version.dll" system library.
+# See <https://github.com/csmith-project/creduce/pull/126>.
+if("${CMAKE_SYSTEM_NAME}" STREQUAL "Windows")
+  target_link_libraries(clang_delta Version)
+endif()
 
 install(TARGETS clang_delta
   RUNTIME DESTINATION "libexec"

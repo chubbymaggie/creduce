@@ -111,6 +111,7 @@ clang_delta_LDADD = \
 	-lclangFrontendTool -lclangFrontend -lclangDriver -lclangSerialization \
 	-lclangCodeGen -lclangParse -lclangSema -lclangAnalysis \
 	-lclangRewriteFrontend -lclangRewrite -lclangAST -lclangBasic -lclangEdit -lclangLex \
+	-lclangARCMigrate \
 	$(LLVMLIBS) \
 	$(LLVMLDFLAGS)
 
@@ -142,6 +143,8 @@ clang_delta_SOURCES = \
 	CopyPropagation.h \
 	EmptyStructToInt.cpp \
 	EmptyStructToInt.h \
+	ExpressionDetector.cpp \
+	ExpressionDetector.h \
 	InstantiateTemplateParam.cpp \
 	InstantiateTemplateParam.h \
 	InstantiateTemplateTypeParamToInt.cpp \
@@ -264,6 +267,8 @@ clang_delta_SOURCES = \
 	UnifyFunctionDecl.h \
 	UnionToStruct.cpp \
 	UnionToStruct.h \
+	VectorToArray.cpp \
+	VectorToArray.h \
 	git_version.h
 
 nodist_clang_delta_SOURCES = \

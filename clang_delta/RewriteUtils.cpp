@@ -587,12 +587,20 @@ bool RewriteUtils::getExprString(const Expr *E,
                                  std::string &ES)
 {
   SourceRange ExprRange = E->getSourceRange();
-   
-  int RangeSize = TheRewriter->getRangeSize(ExprRange);
-  if (RangeSize == -1)
-    return false;
-
   SourceLocation StartLoc = ExprRange.getBegin();
+
+  int RangeSize = TheRewriter->getRangeSize(ExprRange);
+  if (RangeSize == -1) {
+    if (StartLoc.isMacroID()) {
+      StartLoc = SrcManager->getFileLoc(StartLoc);
+      SourceLocation EndLoc = SrcManager->getFileLoc(ExprRange.getEnd());
+      RangeSize = TheRewriter->getRangeSize(SourceRange(StartLoc, EndLoc));
+    }
+    else {
+      return false;
+    }
+  }
+
   const char *StartBuf = SrcManager->getCharacterData(StartLoc);
 
   ES.assign(StartBuf, RangeSize);
@@ -759,6 +767,9 @@ bool RewriteUtils::addNewAssignStmtBefore(Stmt *BeforeStmt,
   }
 
   SourceLocation StmtLocStart = BeforeStmt->getLocStart();
+  if (StmtLocStart.isMacroID()) {
+    StmtLocStart = SrcManager->getFileLoc(StmtLocStart);
+  }
 
   std::string ExprStr;
   RewriteUtils::getExprString(RHS, ExprStr);
@@ -794,26 +805,22 @@ void RewriteUtils::indentAfterNewLine(StringRef Str,
   }
 }
 
-bool RewriteUtils::addStringBeforeStmt(Stmt *BeforeStmt,
+void RewriteUtils::addOpenParenBeforeStmt(Stmt *S, const std::string &IndentStr)
+{
+  SourceRange StmtRange = S->getSourceRange();
+  SourceLocation LocEnd =
+    RewriteUtils::getEndLocationFromBegin(StmtRange);
+  TransAssert(LocEnd.isValid() && "Invalid LocEnd!");
+
+  std::string PostStr = "\n" + IndentStr + "}";
+  TheRewriter->InsertTextAfterToken(LocEnd, PostStr);
+}
+
+bool RewriteUtils::addStringBeforeStmtInternal(Stmt *S,
                                    const std::string &Str,
+                                   const std::string &IndentStr,
                                    bool NeedParen)
 {
-  std::string IndentStr = 
-    RewriteUtils::getStmtIndentString(BeforeStmt, SrcManager);
-
-  if (NeedParen) {
-    SourceRange StmtRange = BeforeStmt->getSourceRange();
-    SourceLocation LocEnd = 
-      RewriteUtils::getEndLocationFromBegin(StmtRange);
-    TransAssert(LocEnd.isValid() && "Invalid LocEnd!");
-
-    std::string PostStr = "\n" + IndentStr + "}";
-    if (TheRewriter->InsertTextAfterToken(LocEnd, PostStr))
-      return false;
-  }
-
-  SourceLocation StmtLocStart = BeforeStmt->getLocStart();
-
   std::string NewStr;
 
   if (NeedParen) {
@@ -824,8 +831,42 @@ bool RewriteUtils::addStringBeforeStmt(Stmt *BeforeStmt,
   
   std::string IndentedStr;
   indentAfterNewLine(NewStr, IndentedStr, IndentStr);
-  return !(TheRewriter->InsertText(StmtLocStart, 
-             IndentedStr, /*InsertAfter=*/false));
+
+  return !(TheRewriter->InsertText(S->getLocStart(), 
+           IndentedStr, /*InsertAfter=*/false));
+}
+
+bool RewriteUtils::addStringBeforeStmt(Stmt *BeforeStmt,
+                                   const std::string &Str,
+                                   bool NeedParen)
+{
+  std::string IndentStr =
+    RewriteUtils::getStmtIndentString(BeforeStmt, SrcManager);
+
+  if (NeedParen) {
+    addOpenParenBeforeStmt(BeforeStmt, IndentStr);
+  }
+  return addStringBeforeStmtInternal(BeforeStmt, Str,
+                                     IndentStr, NeedParen);
+}
+
+// Note that we can't use addStringBeforeStmt because
+// we need to modify an expression in BeforeStmt. We have
+// to do rewrite from end to begin to avoid crash.
+bool RewriteUtils::addStringBeforeStmtAndReplaceExpr(Stmt *BeforeStmt,
+                                   const std::string &StmtStr,
+                                   const Expr *E, const std::string &ExprStr,
+                                   bool NeedParen)
+{
+  std::string IndentStr =
+    RewriteUtils::getStmtIndentString(BeforeStmt, SrcManager);
+
+  if (NeedParen) {
+    addOpenParenBeforeStmt(BeforeStmt, IndentStr);
+  }
+  replaceExpr(E, ExprStr);
+  return addStringBeforeStmtInternal(BeforeStmt, StmtStr,
+                                     IndentStr, NeedParen);
 }
 
 bool RewriteUtils::addStringAfterStmt(Stmt *AfterStmt, 
@@ -1701,7 +1742,7 @@ bool RewriteUtils::removeClassDecls(const CXXRecordDecl *CXXRD)
     SourceRange Range = (*I)->getSourceRange();
     SourceLocation LocEnd;
     if ((*I)->isThisDeclarationADefinition()) {
-      LocEnd = (*I)->getRBraceLoc();
+      LocEnd = (*I)->getBraceRange().getEnd();
       if (LocEnd.isValid())
         LocEnd = getLocationUntil(LocEnd, ';');
       else
@@ -1726,7 +1767,7 @@ bool RewriteUtils::removeClassTemplateDecls(const ClassTemplateDecl *TmplD)
     SourceRange Range = (*I)->getSourceRange();
     SourceLocation LocEnd;
     if (CXXRD->isThisDeclarationADefinition()) {
-      LocEnd = CXXRD->getRBraceLoc();
+      LocEnd = CXXRD->getBraceRange().getEnd();
       LocEnd = getLocationUntil(LocEnd, ';');
     }
     else {

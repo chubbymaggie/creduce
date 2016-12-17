@@ -16,7 +16,7 @@
 #include "clang/AST/NestedNameSpecifier.h"
 
 #ifndef ENABLE_TRANS_ASSERT
-  #define TransAssert(x) {if (!(x)) exit(0);}
+  #define TransAssert(x) {if (!(x)) exit(-1);}
 #else
   #define TransAssert(x) assert(x)
 #endif
@@ -100,6 +100,12 @@ public:
 
   bool addStringBeforeStmt(clang::Stmt *BeforeStmt,
                                   const std::string &Str,
+                                  bool NeedParen);
+
+  bool addStringBeforeStmtAndReplaceExpr(clang::Stmt *BeforeStmt,
+                                  const std::string &StmtStr,
+                                  const clang::Expr *E,
+                                  const std::string &ExprStr,
                                   bool NeedParen);
 
   bool addStringAfterStmt(clang::Stmt *AfterStmt, 
@@ -302,6 +308,12 @@ private:
   void indentAfterNewLine(llvm::StringRef Str,
                                  std::string &NewStr,
                                  const std::string &IndentStr);
+
+  void addOpenParenBeforeStmt(clang::Stmt *S, const std::string &IndentStr);
+
+  bool addStringBeforeStmtInternal(clang::Stmt *S, const std::string &Str,
+                                   const std::string &IndentStr,
+                                   bool NeedParen);
 
   unsigned getOffsetBetweenLocations(clang::SourceLocation StartLoc,
                                             clang::SourceLocation EndLoc,

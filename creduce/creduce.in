@@ -31,6 +31,8 @@ use Regexp::Common;
 use File::Spec;
 use File::Temp;
 use File::Copy;
+use Carp;
+$SIG{ __DIE__ } = sub { Carp::confess( @_ ) };
 
 # Load and use the Term::ReadKey module if available, don't complain otherwise
 my $SKIP_KEY_OFF = 0;
@@ -51,7 +53,6 @@ my $MAX_CRASH_DIRS = 10;
 my $MAX_EXTRA_DIRS = 25000;
 my $GIVEUP_CONSTANT = 50000;
 my $PRINT_DIFF = 0;
-my $SANITIZE = 0;
 my $SKIP_FIRST;
 my $SAVE_TEMPS;
 my $SLLOOWW = 0;
@@ -73,7 +74,6 @@ my @options = (
     ["--tidy",                "const",   1, \$TIDY,            "Do not make a backup copy of each file to reduce as file.orig"],
     ["--shaddap",             "const",   1, \$SILENT_PASS_BUGS, "Suppress output about non-fatal internal errors"],
     ["--die-on-pass-bug",     "const",   1, \$DIE_ON_PASS_BUG, "Terminate C-Reduce if a pass encounters an otherwise non-fatal problem"],
-    ["--sanitize",            "const",   1, \$SANITIZE,        "Attempt to obscure details from the original source file"],
     ["--sllooww",             "const",   1, \$SLLOOWW,         "Try harder to reduce, but perhaps take a long time to do so"],
     ["--also-interesting",    "integer", 1, \$ALSO_INTERESTING, "A process exit code (somewhere in the range 64-113 would be usual) that, when returned by the interestingness test, will cause C-Reduce to save a copy of the variant", "<exitcode>"],
     ["--debug",               "const",   1, \$DEBUG,           "Print debug information"],
@@ -120,19 +120,24 @@ any command line arguments.
 C-Reduce can and does introduce infinite loops during
 reduction. Therefore, if your interestingness test runs the compiled
 program, this should be done under a timeout. You can implement the
-timeout yourself, for example using ulimit, or alternatively you can
-give C-Reduce a timeout (which is on by default, but is set very
-long: 5 minutes). An advantage of using C-Reduce's timeout is that
-when the test does timeout, a message will be printed. You should
-verify that timeouts are not occurring too often.
+timeout yourself, for example using the UNIX "timeout" command, or
+alternatively you can give C-Reduce a timeout (which is on by default,
+but is set very long: 5 minutes). An advantage of using C-Reduce's
+timeout is that when a test is killed due to timing out, a message
+will be printed. If you do implement a timeout yourself, we recommend
+that your interestingness test returns exit code 124 when a subcommand
+times out. This will not affect the reduction but it will cause
+C-Reduce to print a message stating the the interestingness test
+reported a timeout. It is important to ensure that timeouts are not
+occurring too often (especially during C-Reduce's initial passes) or
+else C-Reduce will work poorly.
 
 There is a particularly subtle issue regarding timeouts, which is that
 the interestingness test may slow down due to resource contention when
 C-Reduce runs multiple copies of it on different cores. We have
 observed slowdowns of up to 50% due to (we suspect) cache
 thrashing. You must take this slowdown into account when choosing a
-timeout or else timeouts might occur very frequently, in which case
-C-Reduce will not work well.
+timeout or else timeouts might occur very frequently.
 
 As a quick example of an interestingness test, if you consider a file
 to be interesting if GCC's vectorizer fires while compiling it, you
@@ -286,6 +291,7 @@ sub delta_test () {
                 $res = runit ("$test > /dev/null 2>&1");
             }
         }
+	print "(Interestingness test reported a timeout.)\n" if $res == 124;
         create_extra_dir() if ($ALSO_INTERESTING != -1 && $res == $ALSO_INTERESTING);
         alarm(0);
     };
@@ -299,7 +305,7 @@ sub delta_test () {
 
 sub copy_files_here() {
     foreach my $f (@toreduce) {
-	File::Copy::copy($f,$fileonly{$f}) or die;
+	File::Copy::copy($f,$fileonly{$f}) or die "cannot copy '$f'";
     }
 }
 
@@ -361,13 +367,6 @@ sub call_new ($$$) {
 sub call_advance ($$$$) {
     (my $method,my $fn,my $arg,my $state) = @_;
     my $str = $method."::advance";
-    no strict "refs";
-    return &${str}($fn,$arg,$state);
-}
-
-sub call_advance_on_success ($$$$) {
-    (my $method,my $fn,my $arg,my $state) = @_;
-    my $str = $method."::advance_on_success";
     no strict "refs";
     return &${str}($fn,$arg,$state);
 }
@@ -474,7 +473,7 @@ sub wait_helper() {
 
             my $exit_code;
             if ($proc->GetExitCode($exit_code) != Win32::Process::STILL_ACTIVE()) {
-                $? = ($exit_code == 0) ? 1 << 8 : 0;
+                $? = $exit_code << 8;
                 return $proc->GetProcessID();
             }
             push @procs, $proc;
@@ -692,8 +691,8 @@ sub delta_pass ($) {
 
 		# here is where we actually accept the new result: we
 		# need to grab both the file and the pass state
-		$state = call_advance_on_success ($delta_method, $variant, $delta_arg, $newsh);
 		File::Copy::copy ($variant, $fn) or die;
+                $state = $newsh;
 
 		# we don't want to be stopped by a speculative transformation
 		$stopped = 0;
@@ -758,10 +757,9 @@ my @all_methods = (
     { "name" => "pass_lines",    "arg" => "2",                      "pri" => 412,  "first_pass_pri" =>  22, },
     { "name" => "pass_lines",    "arg" => "3",                      "pri" => 413,  "first_pass_pri" =>  23, },
     { "name" => "pass_lines",    "arg" => "4",                      "pri" => 414,  "first_pass_pri" =>  24, },
-    { "name" => "pass_lines",    "arg" => "5",                      "pri" => 415,  "first_pass_pri" =>  25, },
-    { "name" => "pass_lines",    "arg" => "6",                      "pri" => 416,  "first_pass_pri" =>  26, },
-    { "name" => "pass_lines",    "arg" => "7",                      "pri" => 417,  "first_pass_pri" =>  27, },
-    { "name" => "pass_lines",    "arg" => "8",                      "pri" => 418,  "first_pass_pri" =>  28, },
+    { "name" => "pass_lines",    "arg" => "6",                      "pri" => 415,  "first_pass_pri" =>  25, },
+    { "name" => "pass_lines",    "arg" => "8",                      "pri" => 416,  "first_pass_pri" =>  26, },
+    { "name" => "pass_lines",    "arg" => "10",                     "pri" => 417,  "first_pass_pri" =>  27, },
 
     { "name" => "pass_clang_binsrch",    "arg" => "replace-function-def-with-decl", "first_pass_pri" => 33, },
     { "name" => "pass_clang_binsrch",    "arg" => "remove-unused-function",         "first_pass_pri" => 34, },
@@ -848,12 +846,14 @@ my @all_methods = (
     { "name" => "pass_clang",    "arg" => "replace-array-access-with-index",     "pri" => 256,  },
     { "name" => "pass_clang",    "arg" => "replace-dependent-name", "pri" => 257,  },
     { "name" => "pass_clang",    "arg" => "simplify-recursive-template-instantiation",       "pri" => 258, },
+    { "name" => "pass_clang",    "arg" => "vector-to-array",        "pri" => 259   },    
     { "name" => "pass_clang",    "arg" => "combine-global-var",                    "last_pass_pri" => 990, },
     { "name" => "pass_clang",    "arg" => "combine-local-var",                     "last_pass_pri" => 991, },
     { "name" => "pass_clang",    "arg" => "simplify-struct-union-decl",            "last_pass_pri" => 992, },
     { "name" => "pass_clang",    "arg" => "move-global-var",                       "last_pass_pri" => 993, },
     { "name" => "pass_clang",    "arg" => "unify-function-decl",                   "last_pass_pri" => 994, },
     { "name" => "pass_peep",     "arg" => "a",                      "pri" => 9500,  },
+    { "name" => "pass_peep",     "arg" => "c",                      "pri" => 9500,  },
     { "name" => "pass_ints",     "arg" => "a",                      "pri" => 9600,  },
     { "name" => "pass_ints",     "arg" => "b",                      "pri" => 9601,  },
     { "name" => "pass_ints",     "arg" => "c",                      "pri" => 9602,  },
@@ -878,21 +878,13 @@ my @all_methods = (
     { "name" => "pass_clex", "arg" => "rm-toks-14",             "pri" => 9029, },
     { "name" => "pass_clex", "arg" => "rm-toks-15",             "pri" => 9030, },
     { "name" => "pass_clex", "arg" => "rm-toks-16",             "pri" => 9031, },
+    { "name" => "pass_clex", "arg" => "rename-toks",            "pri" => 9800, "last_pass_pri" => 1000, },
+    { "name" => "pass_clex", "arg" => "delete-string",          "pri" => 9801, },
+    { "name" => "pass_clex", "arg" => "define",                 "pri" => 9802, },
+    # { "name" => "pass_clex", "arg" => "shorten-string",         "pri" => 9804, },
+    # { "name" => "pass_clex", "arg" => "x-string",               "pri" => 9805, },
 
     );
-
-if ($SANITIZE) {
-    push @all_methods, (
-	{ "name" => "pass_clex", "arg" => "rename-toks",            "pri" => 1000, "last_pass_pri" => 1000, },
-        { "name" => "pass_clex", "arg" => "delete-string",          "pri" => 1001, },
-        { "name" => "pass_clex", "arg" => "remove-asm-line",        "pri" => 1002, },
-        { "name" => "pass_clex", "arg" => "remove-asm-comment",     "pri" => 1003, },
-        { "name" => "pass_clex", "arg" => "shorten-string",         "pri" => 1010, },
-        { "name" => "pass_clex", "arg" => "x-string",               "pri" => 1011, },
-	# not helpful
-	# { "name" => "pass_clex", "arg" => "collapse-toks",          "pri" => 5000, },
-    );
-}
 
 if ($SLLOOWW) {
     push @all_methods, (
@@ -1026,10 +1018,15 @@ $test = File::Spec->rel2abs(shift @ARGV);
 usage() unless defined($test);
 check_file_attributes("test script", $test, "efrx");
 
-while (@ARGV) {
+{
+  my %files_seen;
+  while (@ARGV) {
     my $f = File::Spec->rel2abs(shift @ARGV);
+    die "oops-- shouldn't try to reduce '$f' more than once" if ($files_seen{$f});
+    $files_seen{$f} = 1;
     push @toreduce, $f;
     check_file_attributes("file", $f, "efrw");
+  }
 }
 
 sub bysize {

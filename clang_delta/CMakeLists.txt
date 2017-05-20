@@ -1,6 +1,6 @@
 ## -*- mode: CMake -*-
 ##
-## Copyright (c) 2012, 2013, 2014, 2015, 2016 The University of Utah
+## Copyright (c) 2012, 2013, 2014, 2015, 2016, 2017 The University of Utah
 ## All rights reserved.
 ##
 ## This file is distributed under the University of Illinois Open Source
@@ -14,6 +14,7 @@ project(clang_delta)
 ###############################################################################
 
 # find_package(LLVM) is done by the topmost "CMakeLists.txt" file.
+# find_package(Clang) is done by the topmost "CMakeLists.txt" file.
 
 # Generate file "git_version.cpp".
 #
@@ -28,6 +29,8 @@ set_property(DIRECTORY APPEND PROPERTY COMPILE_DEFINITIONS
 include_directories(${CMAKE_BINARY_DIR})
 include_directories(${PROJECT_SOURCE_DIR}) # needed for gen'ed .cpp files
 include_directories(${LLVM_INCLUDE_DIRS})
+include_directories(${CLANG_INCLUDE_DIRS}) # only works for LLVM post-4.0
+
 link_directories(${LLVM_LIBRARY_DIRS})
 
 llvm_map_components_to_libnames(LLVM_LIBS

@@ -1,6 +1,6 @@
 //===----------------------------------------------------------------------===//
 //
-// Copyright (c) 2012, 2013, 2014, 2015, 2016 The University of Utah
+// Copyright (c) 2012, 2013, 2014, 2015, 2016, 2017 The University of Utah
 // All rights reserved.
 //
 // This file is distributed under the University of Illinois Open Source
@@ -340,13 +340,7 @@ unsigned int Transformation::getArrayDimensionAndTypes(
 
 const Type *Transformation::getArrayBaseElemType(const ArrayType *ArrayTy)
 {
-  const Type *ArrayElemTy = ArrayTy->getElementType().getTypePtr();
-  while (ArrayElemTy->isArrayType()) {
-    const ArrayType *AT = dyn_cast<ArrayType>(ArrayElemTy);
-    ArrayElemTy = AT->getElementType().getTypePtr();
-  }
-  TransAssert(ArrayElemTy && "Bad Array Element Type!");
-  return ArrayElemTy;
+  return ArrayTy->getBaseElementTypeUnsafe();
 }
 
 unsigned int Transformation::getConstArraySize(

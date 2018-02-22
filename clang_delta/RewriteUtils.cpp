@@ -26,7 +26,6 @@
 #include "clang/AST/ExprCXX.h"
 
 using namespace clang;
-using namespace llvm;
 
 static const char *DefaultIndentStr = "    ";
 
@@ -266,7 +265,9 @@ bool RewriteUtils::removeParamFromFuncDecl(const ParmVarDecl *PV,
   }
 
   TransAssert(StartBuf && "Invalid start buffer!");
-  while (*StartBuf != ',') {
+  // FIXME: This isn't really correct for processing old-style function
+  // declarations, but just let's live with it for now.
+  while (*StartBuf != ',' && *StartBuf != ';') {
     StartBuf++;
     NewRangeSize++;
   }
@@ -1323,22 +1324,21 @@ bool RewriteUtils::removeVarDecl(const VarDecl *VD,
     return !(TheRewriter->RemoveText(SourceRange(StartLoc, EndLoc)));
   }
 
-  const VarDecl *PrevVD = FirstVD;
+  const Decl *PrevDecl = FirstVD;
   const VarDecl *CurrVD = NULL;
   ++I;
   DeclGroupRef::const_iterator E = DGR.end();
   for (; I != E; ++I) {
     CurrVD = dyn_cast<VarDecl>(*I);
-    TransAssert(CurrVD && "Not a valid VarDecl!");
-    if (VD == CurrVD)
+    if (CurrVD && VD == CurrVD)
       break;
-    PrevVD = CurrVD;
+    PrevDecl = *I;
   }
 
   TransAssert((VD == CurrVD) && "Cannot find VD!");
 
   SourceLocation VarEndLoc = VarRange.getEnd();
-  SourceRange PrevDeclRange = PrevVD->getSourceRange();
+  SourceRange PrevDeclRange = PrevDecl->getSourceRange();
 
   SourceLocation PrevDeclEndLoc = 
     getEndLocationUntil(PrevDeclRange, ',');
@@ -1532,9 +1532,21 @@ bool RewriteUtils::replaceCXXDtorCallExpr(const CXXMemberCallExpr *CE,
   return !(TheRewriter->ReplaceText(StartLoc, OldDtorName.size(), Name));
 }
 
+SourceRange RewriteUtils::getFileLocSourceRange(SourceRange LocRange)
+{
+  SourceLocation StartLoc = LocRange.getBegin();
+  if (StartLoc.isMacroID()) {
+    StartLoc = SrcManager->getSpellingLoc(StartLoc);
+    SourceLocation EndLoc = LocRange.getEnd();
+    TransAssert(EndLoc.isMacroID() && "EndLoc is not from a macro!");
+    LocRange = SourceRange(StartLoc, SrcManager->getSpellingLoc(EndLoc));
+  }
+  return LocRange;
+}
+
 bool RewriteUtils::removeSpecifier(NestedNameSpecifierLoc Loc)
 {
-  SourceRange LocRange = Loc.getLocalSourceRange();
+  SourceRange LocRange = getFileLocSourceRange(Loc.getLocalSourceRange());
   TransAssert((TheRewriter->getRangeSize(LocRange) != -1) && 
               "Bad NestedNameSpecifierLoc Range!");
   return !(TheRewriter->RemoveText(LocRange));
@@ -1543,7 +1555,7 @@ bool RewriteUtils::removeSpecifier(NestedNameSpecifierLoc Loc)
 bool RewriteUtils::replaceSpecifier(NestedNameSpecifierLoc Loc,
                                     const std::string &Name)
 {
-  SourceRange LocRange = Loc.getLocalSourceRange();
+  SourceRange LocRange = getFileLocSourceRange(Loc.getLocalSourceRange());
   TransAssert((TheRewriter->getRangeSize(LocRange) != -1) && 
               "Bad NestedNameSpecifierLoc Range!");
   return !(TheRewriter->ReplaceText(LocRange, Name + "::"));
@@ -1580,6 +1592,9 @@ bool RewriteUtils::replaceRecordType(RecordTypeLoc &RTLoc,
                                      const std::string &Name)
 {
   const IdentifierInfo *TypeId = RTLoc.getType().getBaseTypeIdentifier();
+  if (!TypeId)
+    return true;
+
   SourceLocation LocStart = RTLoc.getLocStart();
 
   // Loc could be invalid, for example:

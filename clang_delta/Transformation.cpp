@@ -269,7 +269,8 @@ const Expr *Transformation::getMemberExprBaseExprAndIdxs(
   while (ME) {
     ValueDecl *VD = ME->getMemberDecl();
     FieldDecl *FD = dyn_cast<FieldDecl>(VD);
-    TransAssert(FD && "Bad FD!\n");
+    if (!FD)
+      return NULL;
     unsigned int Idx = FD->getFieldIndex();
     Idxs.push_back(Idx);
 
@@ -288,11 +289,12 @@ const Expr *Transformation::getMemberExprBaseExprAndIdxs(
 bool Transformation::isCXXMemberExpr(const MemberExpr *ME)
 {
   const ValueDecl *VD = ME->getMemberDecl();
-  if (dyn_cast<CXXMethodDecl>(VD))
-    return true;
 
   const FieldDecl *FD = dyn_cast<FieldDecl>(VD);
-  TransAssert(FD && "Bad FieldDecl!");
+  // VD can be either CXXMethodDecl, EnumConstantDecl or
+  // VarDecl (static data member)
+  if (!FD)
+    return true;
   const CXXRecordDecl *CXXRD = dyn_cast<CXXRecordDecl>(FD->getParent());
   if (!CXXRD)
     return false;
@@ -307,6 +309,8 @@ const Expr *Transformation::getMemberExprElem(const MemberExpr *ME)
 
   IndexVector Idxs;
   const Expr *BaseE = getMemberExprBaseExprAndIdxs(ME, Idxs);
+  if (!BaseE)
+    return NULL;
   return getInitExprFromBase(BaseE, Idxs);
 }
 
@@ -734,6 +738,12 @@ const CXXRecordDecl *Transformation::getBaseDeclFromType(const Type *Ty)
     return getBaseDeclFromType(PT);
   }
 
+  case Type::Pointer: {
+    const PointerType *PT = dyn_cast<PointerType>(Ty);
+    const Type *PTy = PT->getPointeeType().getTypePtr();
+    return getBaseDeclFromType(PTy);
+  }
+
   case Type::SubstTemplateTypeParm: {
     const SubstTemplateTypeParmType *TP =
       dyn_cast<SubstTemplateTypeParmType>(Ty);
@@ -769,6 +779,7 @@ const CXXRecordDecl *Transformation::getBaseDeclFromType(const Type *Ty)
   case Type::SubstTemplateTypeParmPack:
   case Type::PackExpansion:
   case Type::Vector:
+  case Type::ExtVector:
   case Type::Builtin: // fall-through
     return NULL;
 

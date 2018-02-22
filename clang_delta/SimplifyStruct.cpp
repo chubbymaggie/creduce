@@ -23,7 +23,6 @@
 #include "TransformationManager.h"
 
 using namespace clang;
-using namespace llvm;
 
 static const char *DescriptionMsg =
 "This pass replaces a struct with its parent if it has only one \
@@ -226,6 +225,9 @@ bool SimplifyStructRewriteVisitor::VisitMemberExpr(MemberExpr *ME)
     "Unmatched Replacing RD!");
 
   SourceLocation LocEnd = ME->getLocEnd();
+  if (LocEnd.isMacroID()) {
+    LocEnd = ConsumerInstance->SrcManager->getSpellingLoc(LocEnd);
+  }
   SourceLocation ArrowPos = 
       Lexer::findLocationAfterToken(LocEnd,
                                     tok::arrow,
